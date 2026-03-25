@@ -1,0 +1,18 @@
+Global Market Newsboard
+Copyright 2026 admin
+
+This repository contains original source code for the Global Market Newsboard
+application.
+
+The code is licensed under Apache-2.0.
+
+News headlines, article text, source names, logos, and linked content shown by
+running instances of this software remain the property of their respective
+publishers and rights holders. This project is intended to aggregate public
+market signals and link back to original sources. It is not a license to
+republish full copyrighted articles or to imply endorsement by any upstream
+publisher, regulator, exchange, or company.
+
+Operators of public deployments are responsible for complying with the terms of
+use, attribution requirements, redistribution rules, and branding rules of each
+upstream source they ingest.

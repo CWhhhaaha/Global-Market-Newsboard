@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.newsclassified.marketstream</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <string>cd "/Users/admin/Library/Application Support/news_classified" &amp;&amp; ./scripts/run_local.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/admin/Library/Application Support/news_classified</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/admin/Library/Application Support/news_classified/logs/market_stream.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/admin/Library/Application Support/news_classified/logs/market_stream.err.log</string>
+  </dict>
+</plist>

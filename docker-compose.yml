@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    container_name: global-market-newsboard
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8010}:${PORT:-8010}"
+    environment:
+      MARKET_STREAM_HOST: "${MARKET_STREAM_HOST:-0.0.0.0}"
+      MARKET_STREAM_PORT: "${MARKET_STREAM_PORT:-8010}"
+      PORT: "${PORT:-8010}"
+      MARKET_STREAM_POLL_INTERVAL_SECONDS: "${MARKET_STREAM_POLL_INTERVAL_SECONDS:-60}"
+      MARKET_STREAM_MAX_ITEMS: "${MARKET_STREAM_MAX_ITEMS:-250}"
+      MARKET_STREAM_MAX_STORED_ITEMS: "${MARKET_STREAM_MAX_STORED_ITEMS:-100000}"
+      MARKET_STREAM_DB_PATH: "${MARKET_STREAM_DB_PATH:-data/market_stream.db}"
+      MARKET_STREAM_CLASSIFIER_MODE: "${MARKET_STREAM_CLASSIFIER_MODE:-heuristic}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      MARKET_STREAM_OLLAMA_MODEL: "${MARKET_STREAM_OLLAMA_MODEL:-deepseek-r1:8b}"
+      MARKET_STREAM_OLLAMA_TIMEOUT_SECONDS: "${MARKET_STREAM_OLLAMA_TIMEOUT_SECONDS:-20}"
+    volumes:
+      - ./data:/app/data
