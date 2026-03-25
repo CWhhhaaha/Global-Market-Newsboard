@@ -20,6 +20,10 @@ The project is built for people who want a Bloomberg-style market monitor using 
 
 ## Screenshots
 
+GitHub social preview source:
+
+- [docs/social/social-preview.svg](docs/social/social-preview.svg)
+
 ### Full Dashboard
 
 ![Global Market Newsboard home](docs/assets/dashboard-home.png)
