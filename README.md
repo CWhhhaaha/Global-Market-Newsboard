@@ -5,7 +5,7 @@
 ![SQLite](https://img.shields.io/badge/storage-SQLite-0f6ab4)
 ![Docker Ready](https://img.shields.io/badge/deploy-Docker%20Ready-2496ed)
 
-Open-source real-time market news dashboard built for retail traders who want a fast, public-source market monitor without a terminal subscription.
+A retail-first global macro and stock catalyst board that surfaces the headlines most likely to move indices, megacaps, sentiment, and risk in real time, using public sources instead of a terminal subscription.
 
 Global Market Newsboard tracks public market-moving headlines, official releases, filings, and event calendars, then turns them into a live trader-facing board with:
 
@@ -37,6 +37,18 @@ Now Moving
 Trader Focus
 
 ![Trader Focus](docs/assets/dashboard-trader-focus.png)
+
+Trump Watch
+
+![Trump Watch](docs/assets/dashboard-trump-watch.png)
+
+Jensen Huang
+
+![Jensen Huang](docs/assets/dashboard-jensen-watch.png)
+
+Elon Musk
+
+![Elon Musk](docs/assets/dashboard-musk-watch.png)
 
 Search and replay
 
