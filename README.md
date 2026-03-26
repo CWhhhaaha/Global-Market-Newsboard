@@ -25,7 +25,8 @@ The project is built for people who want a Bloomberg-style market monitor using 
 
 ## Screenshots
 
-<img src="https://raw.githubusercontent.com/CWhhhaaha/Global-Market-Newsboard/main/docs/assets/dashboard-home-readme.jpg" alt="Global Market Newsboard home" width="1200" />
+<img width="1648" height="987" alt="截屏2026-03-26 下午10 32 45" src="https://github.com/user-attachments/assets/064b7f10-8ca6-4a00-9dc8-9ef9bd709e25" />
+
 
 ## Demo Video
 
