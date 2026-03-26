@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 import feedparser
 import httpx
@@ -22,6 +23,7 @@ from .models import StreamItem
 
 TAG_RE = re.compile(r"<[^>]+>")
 SPACE_RE = re.compile(r"\s+")
+US_LOCAL_TZ_RE = re.compile(r"\s(?:EST|EDT)$")
 WHITEHOUSE_ITEM_RE = re.compile(
     r'wp-block-post-title[^>]*><a href="(?P<url>https://www\.whitehouse\.gov/[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'
     r'<time datetime="(?P<datetime>[^"]+)"',
@@ -47,12 +49,38 @@ def clean_text(value: str | None) -> str:
     return SPACE_RE.sub(" ", text).strip()
 
 
-def parse_datetime(entry: dict) -> datetime:
+SOURCE_TIMEZONE_OVERRIDES = {
+    "www.eia.gov": ZoneInfo("America/New_York"),
+    "www.federalreserve.gov": ZoneInfo("America/New_York"),
+    "www.bls.gov": ZoneInfo("America/New_York"),
+    "www.sec.gov": ZoneInfo("America/New_York"),
+    "www.cftc.gov": ZoneInfo("America/New_York"),
+    "www.whitehouse.gov": ZoneInfo("America/New_York"),
+    "ustr.gov": ZoneInfo("America/New_York"),
+}
+
+
+def source_timezone(source: Source | None) -> ZoneInfo | None:
+    if not source:
+        return None
+    for domain, tz in SOURCE_TIMEZONE_OVERRIDES.items():
+        if domain in source.homepage:
+            return tz
+    return None
+
+
+def parse_datetime(entry: dict, source: Source | None = None) -> datetime:
     for field in ("published", "updated", "created"):
         raw = entry.get(field)
         if not raw:
             continue
         try:
+            tz_override = source_timezone(source)
+            if tz_override and US_LOCAL_TZ_RE.search(raw.strip()):
+                cleaned = US_LOCAL_TZ_RE.sub("", raw.strip())
+                naive = datetime.strptime(cleaned, "%a, %d %b %Y %H:%M:%S")
+                localized = naive.replace(tzinfo=tz_override)
+                return localized.astimezone(timezone.utc)
             parsed = parsedate_to_datetime(raw)
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
@@ -114,7 +142,7 @@ async def fetch_source(client: httpx.AsyncClient, source: Source) -> list[Stream
                 summary=summary,
                 url=url,
                 source_homepage=source.homepage,
-                published_at=parse_datetime(entry),
+                published_at=parse_datetime(entry, source),
                 matched_terms=matched_terms,
             )
         )

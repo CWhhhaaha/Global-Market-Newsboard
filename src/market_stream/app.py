@@ -1,15 +1,141 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timezone
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 
+from .config import ACCESS_PASSWORD
 from .pipeline import NewsStreamService
 
 service = NewsStreamService()
+AUTH_COOKIE_NAME = "market_stream_auth"
+
+
+def auth_enabled() -> bool:
+    return bool(ACCESS_PASSWORD)
+
+
+def build_auth_token(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def is_authenticated(request: Request) -> bool:
+    if not auth_enabled():
+        return True
+    cookie_value = request.cookies.get(AUTH_COOKIE_NAME, "")
+    return cookie_value == build_auth_token(ACCESS_PASSWORD)
+
+
+def login_page(error: str = "") -> str:
+    error_html = f'<div class="error">{error}</div>' if error else ""
+    return f"""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global Market Newsboard Login</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f2f0ea;
+        --panel: #fffaf1;
+        --ink: #1c2228;
+        --muted: #69707a;
+        --border: #d7cfbf;
+        --accent: #9a2e1a;
+      }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top right, rgba(154, 46, 26, 0.10), transparent 28%),
+          linear-gradient(180deg, #f7f3eb 0%, var(--bg) 100%);
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        padding: 24px;
+      }}
+      .card {{
+        width: min(420px, 100%);
+        background: rgba(255, 250, 241, 0.94);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 18px 42px rgba(31, 35, 40, 0.08);
+      }}
+      .eyebrow {{
+        display: inline-block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        background: rgba(154, 46, 26, 0.08);
+        border-radius: 999px;
+        padding: 6px 10px;
+        margin-bottom: 12px;
+      }}
+      h1 {{
+        margin: 0 0 8px;
+        font-size: 30px;
+        letter-spacing: -0.03em;
+      }}
+      p {{
+        margin: 0 0 18px;
+        color: var(--muted);
+        line-height: 1.5;
+      }}
+      input {{
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        margin-bottom: 12px;
+        background: #fffdf9;
+      }}
+      button {{
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        background: var(--accent);
+        color: #fffaf1;
+        cursor: pointer;
+        font-weight: 700;
+      }}
+      .error {{
+        margin: 0 0 12px;
+        color: #a12626;
+        background: rgba(161, 38, 38, 0.08);
+        border: 1px solid rgba(161, 38, 38, 0.12);
+        border-radius: 12px;
+        padding: 10px 12px;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="eyebrow">Protected Access</div>
+      <h1>Global Market Newsboard</h1>
+      <p>This temporary share link is password protected.</p>
+      {error_html}
+      <form method="post" action="/login">
+        <input type="password" name="password" placeholder="Enter access password" autofocus />
+        <button type="submit">Enter</button>
+      </form>
+    </div>
+  </body>
+</html>
+"""
 
 
 def parse_day_start(value: str | None) -> datetime | None:
@@ -38,6 +164,49 @@ app = FastAPI(
     description="Open-source real-time dashboard for global market-moving headlines and trader-facing signal boards.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def password_gate(request: Request, call_next):
+    host = request.headers.get("host", "").split(":")[0].lower()
+    if host == "globalnewsboard.cn":
+        redirect_target = f"https://www.globalnewsboard.cn{request.url.path}"
+        if request.url.query:
+            redirect_target = f"{redirect_target}?{request.url.query}"
+        return RedirectResponse(url=redirect_target, status_code=308)
+    if not auth_enabled():
+        return await call_next(request)
+    if request.url.path in {"/login", "/favicon.ico"}:
+        return await call_next(request)
+    if is_authenticated(request):
+        return await call_next(request)
+    if request.url.path == "/":
+        return RedirectResponse(url="/login", status_code=303)
+    return PlainTextResponse("Unauthorized", status_code=401)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_view(request: Request) -> HTMLResponse:
+    if is_authenticated(request):
+        return HTMLResponse("", status_code=303, headers={"Location": "/"})
+    return HTMLResponse(login_page())
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request):
+    body = (await request.body()).decode("utf-8", errors="ignore")
+    password = parse_qs(body).get("password", [""])[0]
+    if password != ACCESS_PASSWORD:
+        return HTMLResponse(login_page("Incorrect password."), status_code=401)
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        build_auth_token(ACCESS_PASSWORD),
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+    )
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -121,9 +290,33 @@ async def home() -> str:
       .hero-copy {
         max-width: 820px;
       }
+      .hero-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+      .hero-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 12px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        background: rgba(255, 250, 241, 0.96);
+        color: var(--ink);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .hero-link.primary {
+        background: var(--accent);
+        color: #fffaf1;
+        border-color: rgba(154, 46, 26, 0.3);
+      }
       .hero-kpis {
         display: grid;
-        grid-template-columns: repeat(3, minmax(120px, 1fr));
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
         gap: 10px;
       }
       .hero-side {
@@ -402,6 +595,16 @@ async def home() -> str:
         gap: 10px;
         flex-wrap: wrap;
       }
+      .clock-note {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
       .legend {
         display: flex;
         gap: 8px;
@@ -497,6 +700,10 @@ async def home() -> str:
           <div class="tagline" id="heroTagline">Retail Market Desk</div>
           <h1 id="heroTitle">US Market Newsboard</h1>
           <p id="heroSubtitle">Built around what retail traders usually watch first: Fed and macro signals, Trump, China, megacap U.S. stocks, earnings and movers, Jensen Huang, Elon Musk, and war or oil catalysts.</p>
+          <div class="hero-actions">
+            <a class="hero-link" id="projectLink" href="https://github.com/CWhhhaaha/Global-Market-Newsboard" target="_blank" rel="noreferrer">Open-source Project</a>
+            <a class="hero-link primary" id="starLink" href="https://github.com/CWhhhaaha/Global-Market-Newsboard/stargazers" target="_blank" rel="noreferrer">Star on GitHub</a>
+          </div>
         </div>
         <div class="hero-side">
           <div class="language-box">
@@ -524,6 +731,10 @@ async def home() -> str:
               <div class="kpi-label" id="eventsLabel">Events</div>
               <div class="kpi-value" id="eventsCount">--</div>
             </div>
+            <div class="kpi">
+              <div class="kpi-label" id="timezoneLabel">Timezone</div>
+              <div class="kpi-value" id="timezoneValue">--</div>
+            </div>
           </div>
         </div>
       </div>
@@ -534,6 +745,10 @@ async def home() -> str:
           <span class="badge badge-bear" id="legendBear">bearish</span>
           <span class="badge badge-watch" id="legendWatch">watch</span>
         </div>
+      </div>
+      <div class="clock-note">
+        <div id="localTimeNote">All times are shown in your local timezone.</div>
+        <div id="localClock">--</div>
       </div>
       <form id="searchForm" class="toolbar">
         <input id="queryInput" type="text" placeholder="Search headline, summary, source, keyword" />
@@ -605,7 +820,10 @@ async def home() -> str:
       const snapshotTime = document.getElementById("snapshotTime");
       const priorityCount = document.getElementById("priorityCount");
       const eventsCount = document.getElementById("eventsCount");
+      const timezoneValue = document.getElementById("timezoneValue");
       const syncNote = document.getElementById("syncNote");
+      const localTimeNote = document.getElementById("localTimeNote");
+      const localClock = document.getElementById("localClock");
       const formEl = document.getElementById("searchForm");
       const queryInput = document.getElementById("queryInput");
       const categorySelect = document.getElementById("categorySelect");
@@ -623,18 +841,24 @@ async def home() -> str:
       let currentOffset = 0;
       const pageSize = 50;
       let dashboardRefreshTimer = null;
+      const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+      const localLocale = navigator.language || undefined;
       const ui = {
         "zh-CN": {
           heroTagline: "散户交易台",
           heroTitle: "全球市场消息面板",
           heroSubtitle: "围绕散户最先关注的美联储与宏观、中国与特朗普、美股巨头、财报与异动，以及黄仁勋、马斯克和战争油价信号。",
+          projectLink: "开源项目",
+          starLink: "GitHub 星标",
           languageLabel: "语言",
           snapshotLabel: "快照",
           priorityLabel: "动态",
           eventsLabel: "事件",
+          timezoneLabel: "时区",
           legendBull: "利多",
           legendBear: "利空",
           legendWatch: "观察",
+          localTimeNote: "所有时间按你的本地时区显示。",
           queryPlaceholder: "搜索标题、摘要、来源、关键词",
           allCategories: "全部分类",
           allRegions: "全部地区",
@@ -685,13 +909,17 @@ async def home() -> str:
           heroTagline: "散戶交易台",
           heroTitle: "全球市場消息面板",
           heroSubtitle: "圍繞散戶最先關注的美聯儲與宏觀、中國與川普、美股巨頭、財報與異動，以及黃仁勳、馬斯克和戰爭油價訊號。",
+          projectLink: "開源專案",
+          starLink: "GitHub 星標",
           languageLabel: "語言",
           snapshotLabel: "快照",
           priorityLabel: "動態",
           eventsLabel: "事件",
+          timezoneLabel: "時區",
           legendBull: "利多",
           legendBear: "利空",
           legendWatch: "觀察",
+          localTimeNote: "所有時間依你的本地時區顯示。",
           queryPlaceholder: "搜尋標題、摘要、來源、關鍵字",
           allCategories: "全部分類",
           allRegions: "全部地區",
@@ -742,13 +970,17 @@ async def home() -> str:
           heroTagline: "Retail Market Desk",
           heroTitle: "Global Market Newsboard",
           heroSubtitle: "Built around what retail traders usually watch first: Fed and macro signals, Trump, China, megacap U.S. stocks, earnings and movers, Jensen Huang, Elon Musk, and war or oil catalysts.",
+          projectLink: "Open-source Project",
+          starLink: "Star on GitHub",
           languageLabel: "Language",
           snapshotLabel: "Snapshot",
           priorityLabel: "Moving",
           eventsLabel: "Events",
+          timezoneLabel: "Timezone",
           legendBull: "Bullish",
           legendBear: "Bearish",
           legendWatch: "Watch",
+          localTimeNote: "All times are shown in your local timezone.",
           queryPlaceholder: "Search headline, summary, source, keyword",
           allCategories: "All categories",
           allRegions: "All regions",
@@ -799,13 +1031,17 @@ async def home() -> str:
           heroTagline: "個人投資家デスク",
           heroTitle: "グローバル市場ニュースボード",
           heroSubtitle: "FRBとマクロ、中国とトランプ、米国メガキャップ、決算と値動き、ジェンスン・フアン、イーロン・マスク、戦争と原油材料を優先表示します。",
+          projectLink: "オープンソース",
+          starLink: "GitHubでスター",
           languageLabel: "言語",
           snapshotLabel: "スナップショット",
           priorityLabel: "注目",
           eventsLabel: "イベント",
+          timezoneLabel: "タイムゾーン",
           legendBull: "強気",
           legendBear: "弱気",
           legendWatch: "監視",
+          localTimeNote: "すべての時刻は閲覧中のローカル時刻で表示します。",
           queryPlaceholder: "見出し、要約、ソース、キーワードを検索",
           allCategories: "すべてのカテゴリ",
           allRegions: "すべての地域",
@@ -856,13 +1092,17 @@ async def home() -> str:
           heroTagline: "개인투자자 데스크",
           heroTitle: "글로벌 마켓 뉴스보드",
           heroSubtitle: "연준과 거시 지표, 중국과 트럼프, 미국 메가캡, 실적과 급등락, 젠슨 황, 일론 머스크, 전쟁·유가 재료를 우선 보여줍니다.",
+          projectLink: "오픈소스 프로젝트",
+          starLink: "GitHub 스타",
           languageLabel: "언어",
           snapshotLabel: "스냅샷",
           priorityLabel: "동향",
           eventsLabel: "이벤트",
+          timezoneLabel: "시간대",
           legendBull: "강세",
           legendBear: "약세",
           legendWatch: "관찰",
+          localTimeNote: "모든 시간은 접속한 사용자의 현지 시간대로 표시됩니다.",
           queryPlaceholder: "제목, 요약, 출처, 키워드 검색",
           allCategories: "전체 카테고리",
           allRegions: "전체 지역",
@@ -913,13 +1153,17 @@ async def home() -> str:
           heroTagline: "Mesa del Inversor Minorista",
           heroTitle: "Global Market Newsboard",
           heroSubtitle: "Pensado para lo que un trader minorista suele mirar primero: Fed y macro, Trump y China, megacaps de EE. UU., resultados y movimientos, Jensen Huang, Elon Musk, y catalizadores de guerra o petróleo.",
+          projectLink: "Proyecto abierto",
+          starLink: "Dar estrella en GitHub",
           languageLabel: "Idioma",
           snapshotLabel: "Instantánea",
           priorityLabel: "Movimiento",
           eventsLabel: "Eventos",
+          timezoneLabel: "Zona horaria",
           legendBull: "Alcista",
           legendBear: "Bajista",
           legendWatch: "Vigilar",
+          localTimeNote: "Todas las horas se muestran en tu zona horaria local.",
           queryPlaceholder: "Buscar titular, resumen, fuente o palabra clave",
           allCategories: "Todas las categorías",
           allRegions: "Todas las regiones",
@@ -970,13 +1214,17 @@ async def home() -> str:
           heroTagline: "Desk Trader Particulier",
           heroTitle: "Global Market Newsboard",
           heroSubtitle: "Conçu autour de ce qu’un trader particulier regarde d’abord : Fed et macro, Trump et Chine, mégacaps américaines, résultats et mouvements, Jensen Huang, Elon Musk, ainsi que guerre et pétrole.",
+          projectLink: "Projet open source",
+          starLink: "Mettre une étoile sur GitHub",
           languageLabel: "Langue",
           snapshotLabel: "Instantané",
           priorityLabel: "Mouvement",
           eventsLabel: "Événements",
+          timezoneLabel: "Fuseau horaire",
           legendBull: "Haussier",
           legendBear: "Baissier",
           legendWatch: "Surveiller",
+          localTimeNote: "Toutes les heures sont affichées dans votre fuseau horaire local.",
           queryPlaceholder: "Rechercher titre, résumé, source ou mot-clé",
           allCategories: "Toutes les catégories",
           allRegions: "Toutes les régions",
@@ -1064,13 +1312,17 @@ async def home() -> str:
         document.getElementById("heroTagline").textContent = t("heroTagline");
         document.getElementById("heroTitle").textContent = t("heroTitle");
         document.getElementById("heroSubtitle").textContent = t("heroSubtitle");
+        document.getElementById("projectLink").textContent = t("projectLink");
+        document.getElementById("starLink").textContent = t("starLink");
         document.getElementById("languageLabel").textContent = t("languageLabel");
         document.getElementById("snapshotLabel").textContent = t("snapshotLabel");
         document.getElementById("priorityLabel").textContent = t("priorityLabel");
         document.getElementById("eventsLabel").textContent = t("eventsLabel");
+        document.getElementById("timezoneLabel").textContent = t("timezoneLabel");
         document.getElementById("legendBull").textContent = t("legendBull");
         document.getElementById("legendBear").textContent = t("legendBear");
         document.getElementById("legendWatch").textContent = t("legendWatch");
+        localTimeNote.textContent = t("localTimeNote");
         queryInput.placeholder = t("queryPlaceholder");
         categorySelect.options[0].text = t("allCategories");
         categorySelect.options[1].text = translateCategory("world");
@@ -1102,6 +1354,47 @@ async def home() -> str:
         }
       }
 
+      function formatDateTime(value) {
+        return new Date(value).toLocaleString(localLocale, {
+          hour12: false,
+          timeZone: localTimeZone,
+        });
+      }
+
+      function formatTime(value) {
+        return new Date(value).toLocaleTimeString(localLocale, {
+          hour12: false,
+          timeZone: localTimeZone,
+        });
+      }
+
+      function updateLocalClock() {
+        localClock.textContent = new Date().toLocaleString(localLocale, {
+          hour12: false,
+          timeZone: localTimeZone,
+        });
+        timezoneValue.textContent = localTimeZone;
+        if (liveMode) {
+          snapshotTime.textContent = new Date().toLocaleTimeString(localLocale, {
+            hour12: false,
+            timeZone: localTimeZone,
+          });
+        }
+      }
+
+      function localizedAlertText(item) {
+        const classification = item.classification || {};
+        const terms = (item.matched_terms || []).slice(0, 5).join(", ") || "general market signal";
+        const summary = item.summary || "";
+        return [
+          `Time: ${formatDateTime(item.published_at)}`,
+          `Source: ${item.source_name}`,
+          `Signal: ${terms}`,
+          `Class: ${classification.primary_label || "unclassified"} | ${classification.impact_direction || "watch"} | ${classification.impact_level || "low"}`,
+          summary ? `Summary: ${summary}` : "",
+        ].filter(Boolean).join("\\n");
+      }
+
       function card(item) {
         const articleUrl = item.url || item.source_homepage;
         const classification = item.classification || {};
@@ -1118,7 +1411,7 @@ async def home() -> str:
                 <span class="badge badge-neutral">lag ${lagText}</span>
               </div>
               <div class="meta-right">
-                <div class="meta">${new Date(item.published_at).toLocaleString()}</div>
+                <div class="meta">${formatDateTime(item.published_at)}</div>
               </div>
             </div>
             <div class="title"><a href="${articleUrl}" target="_blank" rel="noreferrer">${item.title}</a></div>
@@ -1137,7 +1430,7 @@ async def home() -> str:
               </div>
             </div>
             <div class="summary">${item.summary || ""}</div>
-            <div class="line">${item.alert_text}</div>
+            <div class="line">${localizedAlertText(item)}</div>
           </article>
         `;
       }
@@ -1154,7 +1447,7 @@ async def home() -> str:
                 <span class="${badgeClass(item.classification?.impact_direction)}">${labelText(item.classification?.impact_direction || "watch")}</span>
                 <span class="badge badge-neutral">lag ${lagText}</span>
               </div>
-              <div class="meta">${new Date(item.published_at).toLocaleTimeString()}</div>
+              <div class="meta">${formatTime(item.published_at)}</div>
             </div>
             <div class="compact-title"><a href="${articleUrl}" target="_blank" rel="noreferrer">${item.title}</a></div>
             <div class="compact-meta">${item.source_name} | ${t("impact")} ${labelText(item.classification?.impact_level || "low")} | ${(item.classification?.affected_targets || []).join(", ") || "SPY"}</div>
@@ -1178,7 +1471,7 @@ async def home() -> str:
           <article class="compact-card">
             <div class="compact-title"><a href="${item.source_url}" target="_blank" rel="noreferrer">${item.title}</a></div>
             <div class="compact-meta">${item.source_name} | ${item.category}</div>
-            <div class="line">${new Date(item.event_time).toLocaleString()}\n${item.note || ""}</div>
+            <div class="line">${formatDateTime(item.event_time)}\n${item.note || ""}</div>
           </article>
         `;
       }
@@ -1192,7 +1485,7 @@ async def home() -> str:
                 <div class="meta-left">
                   <span class="${badgeClass(item.classification?.impact_direction)}">${labelText(item.classification?.impact_direction || "watch")}</span>
                 </div>
-                <div class="meta">${new Date(item.published_at).toLocaleTimeString()}</div>
+                <div class="meta">${formatTime(item.published_at)}</div>
               </div>
               <div class="compact-title"><a href="${articleUrl}" target="_blank" rel="noreferrer">${item.title}</a></div>
               <div class="compact-meta">${item.source_name}</div>
@@ -1271,14 +1564,14 @@ async def home() -> str:
           sectionBlock(t("section_war_and_oil"), data.sections.war_and_oil || []),
         ].join("");
         moversPanel.innerHTML = (data.prepost_movers || []).map(compactMover).join("") || `<div class="compact-meta">${t("noMovers")}</div>`;
-        snapshotTime.textContent = new Date(data.generated_at).toLocaleTimeString();
+        snapshotTime.textContent = formatTime(data.generated_at);
         priorityCount.textContent = String(
           (data.now_moving?.macro_now || []).length +
           (data.now_moving?.stock_now || []).length +
           (data.now_moving?.geopolitics_now || []).length
         );
         eventsCount.textContent = String(data.events.length);
-        syncNote.textContent = t("synced", {time: new Date(data.generated_at).toLocaleString()});
+        syncNote.textContent = t("synced", {time: formatDateTime(data.generated_at)});
       }
 
       function scheduleDashboardRefresh(delay = 300) {
@@ -1384,8 +1677,10 @@ async def home() -> str:
       prevBtn.disabled = true;
       nextBtn.disabled = true;
       applyTranslations();
+      updateLocalClock();
       loadDashboardSnapshot().then(attachStream);
-      setInterval(loadDashboardSnapshot, 60000);
+      setInterval(loadDashboardSnapshot, 5000);
+      setInterval(updateLocalClock, 1000);
     </script>
   </body>
 </html>

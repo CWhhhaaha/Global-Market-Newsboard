@@ -7,6 +7,11 @@
 
 A retail-first global macro and stock catalyst board that surfaces the headlines most likely to move indices, megacaps, sentiment, and risk in real time, using public sources instead of a terminal subscription.
 
+## Live Website
+
+- Public entry: [https://www.globalnewsboard.cn](https://www.globalnewsboard.cn)
+- Source code: [https://github.com/CWhhhaaha/Global-Market-Newsboard](https://github.com/CWhhhaaha/Global-Market-Newsboard)
+
 Global Market Newsboard tracks public market-moving headlines, official releases, filings, and event calendars, then turns them into a live trader-facing board with:
 
 - real-time stream updates
@@ -49,7 +54,7 @@ flowchart LR
 - Focused on what traders scan first: Fed, macro, megacaps, China, Trump, Jensen Huang, Musk, bonds, FX, metals, oil
 - Uses public feeds and official sources instead of closed terminals
 - Keeps source links visible to avoid black-box aggregation
-- Runs locally with SQLite, but is easy to deploy with Docker
+- Runs locally with SQLite, but can also be exposed publicly through a reverse proxy or Cloudflare Tunnel
 
 ## Current Feature Set
 
@@ -163,6 +168,7 @@ This repo is designed so the same app can run:
 - on a VPS
 - in Docker
 - behind Nginx or a cloud reverse proxy
+- behind Cloudflare Tunnel with a custom domain
 
 ## Project Structure
 

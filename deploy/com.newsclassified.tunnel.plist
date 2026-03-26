@@ -3,12 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.newsclassified.marketstream</string>
+    <string>com.newsclassified.tunnel</string>
 
     <key>ProgramArguments</key>
     <array>
       <string>/bin/zsh</string>
-      <string>/Users/admin/Library/Application Support/news_classified/scripts/run_local.sh</string>
+      <string>/Users/admin/Library/Application Support/news_classified/scripts/run_tunnel.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -21,9 +21,9 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/admin/Library/Application Support/news_classified/logs/market_stream.out.log</string>
+    <string>/Users/admin/Library/Application Support/news_classified/logs/cloudflared.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/admin/Library/Application Support/news_classified/logs/market_stream.err.log</string>
+    <string>/Users/admin/Library/Application Support/news_classified/logs/cloudflared.err.log</string>
   </dict>
 </plist>
