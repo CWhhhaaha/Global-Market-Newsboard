@@ -155,7 +155,31 @@ See [.env.example](.env.example).
 Files included:
 
 - [scripts/run_local.sh](scripts/run_local.sh)
+- [scripts/run_tunnel.sh](scripts/run_tunnel.sh)
+- [scripts/run_keepawake.sh](scripts/run_keepawake.sh)
+- [scripts/install_launch_agents.sh](scripts/install_launch_agents.sh)
+- [scripts/check_local_services.sh](scripts/check_local_services.sh)
 - [deploy/com.newsclassified.marketstream.plist](deploy/com.newsclassified.marketstream.plist)
+- [deploy/com.newsclassified.tunnel.plist](deploy/com.newsclassified.tunnel.plist)
+- [deploy/com.newsclassified.keepawake.plist](deploy/com.newsclassified.keepawake.plist)
+
+Recommended setup:
+
+```bash
+./scripts/install_launch_agents.sh
+./scripts/check_local_services.sh
+```
+
+What this enables:
+
+- `marketstream`: keeps the FastAPI app running after login
+- `tunnel`: keeps the Cloudflare Tunnel online for public access
+- `keepawake`: uses `caffeinate` to prevent idle sleep while still allowing the display to turn off
+
+Operational note:
+
+- This setup is designed for a logged-in Mac that stays powered on and connected to the network.
+- If the machine shuts down, loses network, or is manually put to sleep, the public site will go offline until the session resumes.
 
 ### Container deployment
 
