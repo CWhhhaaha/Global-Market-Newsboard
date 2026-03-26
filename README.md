@@ -25,7 +25,7 @@ The project is built for people who want a Bloomberg-style market monitor using 
 
 ## Screenshots
 
-![Global Market Newsboard home](docs/assets/dashboard-home.png)
+<img src="https://raw.githubusercontent.com/CWhhhaaha/Global-Market-Newsboard/main/docs/assets/dashboard-home.png" alt="Global Market Newsboard home" width="1200" />
 
 ## Demo Video
 
