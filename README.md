@@ -20,47 +20,11 @@ The project is built for people who want a Bloomberg-style market monitor using 
 
 ## Screenshots
 
-GitHub social preview source:
-
-- [docs/social/social-preview.svg](docs/social/social-preview.svg)
-
-### Full Dashboard
-
 ![Global Market Newsboard home](docs/assets/dashboard-home.png)
 
-### Key Panels
+## Demo Video
 
-Main Stream
-
-![Main Stream](docs/assets/dashboard-main-stream.png)
-
-Now Moving
-
-![Now Moving](docs/assets/dashboard-now-moving.png)
-
-Trader Focus
-
-![Trader Focus](docs/assets/dashboard-trader-focus.png)
-
-Trump Watch
-
-![Trump Watch](docs/assets/dashboard-trump-watch.png)
-
-Jensen Huang
-
-![Jensen Huang](docs/assets/dashboard-jensen-watch.png)
-
-Elon Musk
-
-![Elon Musk](docs/assets/dashboard-musk-watch.png)
-
-Search and replay
-
-![Search view](docs/assets/dashboard-search-nvidia.png)
-
-Mid-layout detail
-
-![Mid layout](docs/assets/dashboard-mid-layout.png)
+[Watch the demo video](docs/social/global-market-newsboard-demo.mov)
 
 ## Architecture
 
