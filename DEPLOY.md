@@ -5,8 +5,47 @@
 Global Market Newsboard can be deployed in three practical ways:
 
 - local development with `uvicorn`
+- local always-on on a Mac with `launchd`
 - Docker on a VPS
 - reverse-proxied public deployment with Nginx or a cloud edge
+
+## macOS Local Always-On
+
+This project can run continuously on a logged-in Mac by combining:
+
+- `launchd` for the FastAPI app
+- `launchd` for the Cloudflare Tunnel
+- `caffeinate` to prevent idle sleep while still allowing the display to turn off
+
+Install and refresh the local services:
+
+```bash
+./scripts/install_launch_agents.sh
+```
+
+Check that everything is healthy:
+
+```bash
+./scripts/check_local_services.sh
+```
+
+The local always-on setup uses these files:
+
+- `scripts/run_local.sh`
+- `scripts/run_tunnel.sh`
+- `scripts/run_keepawake.sh`
+- `scripts/install_launch_agents.sh`
+- `scripts/check_local_services.sh`
+- `deploy/com.newsclassified.marketstream.plist`
+- `deploy/com.newsclassified.tunnel.plist`
+- `deploy/com.newsclassified.keepawake.plist`
+
+Operational boundary:
+
+- the app stays online after you log in to macOS
+- the display may sleep normally
+- idle system sleep is prevented
+- if the Mac shuts down, loses network, or is manually put to sleep, the public site goes offline until the session resumes
 
 The easiest public deployment path is:
 
