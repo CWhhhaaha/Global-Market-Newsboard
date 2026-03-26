@@ -24,7 +24,7 @@ The project is built for people who want a Bloomberg-style market monitor using 
 
 ## Demo Video
 
-[Watch the demo video](docs/social/global-market-newsboard-demo.mov)
+[Watch the demo video](docs/social/global-market-newsboard-demo.mp4)
 
 ## Architecture
 
