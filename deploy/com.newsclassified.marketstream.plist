@@ -20,6 +20,12 @@
     <key>KeepAlive</key>
     <true/>
 
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>MARKET_STREAM_ACCESS_PASSWORD</key>
+      <string>123456</string>
+    </dict>
+
     <key>StandardOutPath</key>
     <string>/Users/admin/Library/Application Support/news_classified/logs/market_stream.out.log</string>
 
