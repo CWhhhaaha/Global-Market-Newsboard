@@ -165,8 +165,6 @@ class SQLiteStore:
     ) -> list[StreamItem]:
         pattern = f"%{query.strip()}%"
         with self._connect() as connection:
-            if contains_cjk(query):
-                self._backfill_chinese_fields(connection, limit=8)
             sql = """
                 SELECT *
                 FROM alerts
@@ -198,28 +196,6 @@ class SQLiteStore:
         return [self._row_to_item(row) for row in rows]
 
     def ensure_chinese_for_items(self, items: list[StreamItem], limit: int = 12) -> list[StreamItem]:
-        remaining = limit
-        updates: list[tuple[str, str, str]] = []
-        for item in items:
-            if remaining <= 0:
-                break
-            changed = False
-            if not item.title_zh:
-                item.title_zh = self._translate_if_needed(item.title)
-                changed = True
-            if changed:
-                remaining -= 1
-                updates.append((item.title_zh, item.summary_zh, item.item_id))
-        if updates:
-            with self._connect() as connection:
-                connection.executemany(
-                    """
-                    UPDATE alerts
-                    SET title_zh = ?, summary_zh = ?
-                    WHERE id = ?
-                    """,
-                    updates,
-                )
         return items
 
     def all_ids(self) -> set[str]:

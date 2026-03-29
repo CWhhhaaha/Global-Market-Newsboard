@@ -13,7 +13,7 @@ from .config import ACCESS_PASSWORD
 from .pipeline import NewsStreamService
 
 service = NewsStreamService()
-AUTH_COOKIE_NAME = "market_stream_auth"
+AUTH_COOKIE_NAME = "market_stream_auth_v2"
 
 
 def auth_enabled() -> bool:
@@ -204,8 +204,14 @@ async def login_submit(request: Request):
         build_auth_token(ACCESS_PASSWORD),
         httponly=True,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,
     )
+    return response
+
+
+@app.get("/logout")
+async def logout() -> RedirectResponse:
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
     return response
 
 
@@ -703,6 +709,7 @@ async def home() -> str:
           <div class="hero-actions">
             <a class="hero-link" id="projectLink" href="https://github.com/CWhhhaaha/Global-Market-Newsboard" target="_blank" rel="noreferrer">Open-source Project</a>
             <a class="hero-link primary" id="starLink" href="https://github.com/CWhhhaaha/Global-Market-Newsboard/stargazers" target="_blank" rel="noreferrer">Star on GitHub</a>
+            <a class="hero-link" id="logoutLink" href="/logout">Logout</a>
           </div>
         </div>
         <div class="hero-side">
@@ -835,12 +842,17 @@ async def home() -> str:
       const nextBtn = document.getElementById("nextBtn");
       const pageLabel = document.getElementById("pageLabel");
       const languageSelect = document.getElementById("languageSelect");
+      const searchBtn = document.getElementById("searchBtn");
+      const logoutLink = document.getElementById("logoutLink");
       let currentLanguage = localStorage.getItem("market_stream_language") || "zh-CN";
       let source;
       let liveMode = true;
       let currentOffset = 0;
-      const pageSize = 50;
+      const pageSize = 30;
       let dashboardRefreshTimer = null;
+      let searchAbortController = null;
+      let searchRequestId = 0;
+      let eventsRefreshCounter = 0;
       const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
       const localLocale = navigator.language || undefined;
       const ui = {
@@ -850,6 +862,7 @@ async def home() -> str:
           heroSubtitle: "围绕散户最先关注的美联储与宏观、中国与特朗普、美股巨头、财报与异动，以及黄仁勋、马斯克和战争油价信号。",
           projectLink: "开源项目",
           starLink: "GitHub 星标",
+          logoutLink: "退出登录",
           languageLabel: "语言",
           snapshotLabel: "快照",
           priorityLabel: "动态",
@@ -863,11 +876,12 @@ async def home() -> str:
           allCategories: "全部分类",
           allRegions: "全部地区",
           searchBtn: "搜索",
+          searchLoading: "搜索中...",
           liveBtn: "实时",
           mainStreamTitle: "主消息流",
           mainStreamNote: "按最新排序，优先显示方向、影响等级、影响对象与来源。",
           nowMovingTitle: "正在驱动",
-          nowMovingNote: "按宏观、个股、地缘三类拆分，便于快速扫盘。",
+          nowMovingNote: "优先盯美联储与宏观、国际政治与战争、科技股与币圈异动三条主线。",
           traderFocusTitle: "交易者关注",
           traderFocusNote: "固定模块化观察台，用于盯美联储、债券、贵金属、政策主题和人物线索。",
           prepostTitle: "盘前盘后与市场异动",
@@ -888,9 +902,9 @@ async def home() -> str:
           lagLabel: "延迟",
           lastLabel: "最新",
           changeLabel: "变动",
-          tapeMacro: "宏观驱动",
-          tapeStock: "个股异动",
-          tapeGeo: "地缘与政策",
+          tapeMacro: "美联储与宏观",
+          tapeStock: "科技股与币圈",
+          tapeGeo: "国际政治与战争",
           section_market_drivers: "大盘驱动",
           section_bonds_rates: "债券与利率",
           section_dollar_fx: "美元与外汇",
@@ -914,6 +928,7 @@ async def home() -> str:
           heroSubtitle: "圍繞散戶最先關注的美聯儲與宏觀、中國與川普、美股巨頭、財報與異動，以及黃仁勳、馬斯克和戰爭油價訊號。",
           projectLink: "開源專案",
           starLink: "GitHub 星標",
+          logoutLink: "登出",
           languageLabel: "語言",
           snapshotLabel: "快照",
           priorityLabel: "動態",
@@ -927,11 +942,12 @@ async def home() -> str:
           allCategories: "全部分類",
           allRegions: "全部地區",
           searchBtn: "搜尋",
+          searchLoading: "搜尋中...",
           liveBtn: "即時",
           mainStreamTitle: "主消息流",
           mainStreamNote: "按最新排序，優先顯示方向、影響等級、影響標的與來源。",
           nowMovingTitle: "正在驅動",
-          nowMovingNote: "依宏觀、個股、地緣三類拆分，方便快速掃盤。",
+          nowMovingNote: "優先盯美聯儲與宏觀、國際政治與戰爭、科技股與幣圈異動三條主線。",
           traderFocusTitle: "交易者關注",
           traderFocusNote: "固定模組化觀察台，用於盯美聯儲、債券、貴金屬、政策主題和人物線索。",
           prepostTitle: "盤前盤後與市場異動",
@@ -952,9 +968,9 @@ async def home() -> str:
           lagLabel: "延遲",
           lastLabel: "最新",
           changeLabel: "變動",
-          tapeMacro: "宏觀驅動",
-          tapeStock: "個股異動",
-          tapeGeo: "地緣與政策",
+          tapeMacro: "美聯儲與宏觀",
+          tapeStock: "科技股與幣圈",
+          tapeGeo: "國際政治與戰爭",
           section_market_drivers: "大盤驅動",
           section_bonds_rates: "債券與利率",
           section_dollar_fx: "美元與外匯",
@@ -978,6 +994,7 @@ async def home() -> str:
           heroSubtitle: "Built around what retail traders usually watch first: Fed and macro signals, Trump, China, megacap U.S. stocks, earnings and movers, Jensen Huang, Elon Musk, and war or oil catalysts.",
           projectLink: "Open-source Project",
           starLink: "Star on GitHub",
+          logoutLink: "Log out",
           languageLabel: "Language",
           snapshotLabel: "Snapshot",
           priorityLabel: "Moving",
@@ -991,11 +1008,12 @@ async def home() -> str:
           allCategories: "All categories",
           allRegions: "All regions",
           searchBtn: "Search",
+          searchLoading: "Searching...",
           liveBtn: "Live",
           mainStreamTitle: "Main Stream",
           mainStreamNote: "Latest first, with direction, impact, targets, and source context.",
           nowMovingTitle: "Now Moving",
-          nowMovingNote: "Split into macro, stocks, and geopolitics so it is faster to scan.",
+          nowMovingNote: "Focused on three first-look drivers: Fed and macro, international politics and war, and tech or crypto movers.",
           traderFocusTitle: "Trader Focus",
           traderFocusNote: "Fixed watch modules for Fed, bonds, precious metals, policy themes, and person-specific headlines.",
           prepostTitle: "Pre/Post-Market and Movers",
@@ -1016,9 +1034,9 @@ async def home() -> str:
           lagLabel: "lag",
           lastLabel: "Last",
           changeLabel: "Change",
-          tapeMacro: "Macro Now",
-          tapeStock: "Stock Now",
-          tapeGeo: "Geopolitics Now",
+          tapeMacro: "Fed & Macro",
+          tapeStock: "Tech & Crypto",
+          tapeGeo: "Politics & War",
           section_market_drivers: "Market Drivers",
           section_bonds_rates: "Bonds & Rates",
           section_dollar_fx: "Dollar & FX",
@@ -1042,6 +1060,7 @@ async def home() -> str:
           heroSubtitle: "FRBとマクロ、中国とトランプ、米国メガキャップ、決算と値動き、ジェンスン・フアン、イーロン・マスク、戦争と原油材料を優先表示します。",
           projectLink: "オープンソース",
           starLink: "GitHubでスター",
+          logoutLink: "ログアウト",
           languageLabel: "言語",
           snapshotLabel: "スナップショット",
           priorityLabel: "注目",
@@ -1055,6 +1074,7 @@ async def home() -> str:
           allCategories: "すべてのカテゴリ",
           allRegions: "すべての地域",
           searchBtn: "検索",
+          searchLoading: "検索中...",
           liveBtn: "ライブ",
           mainStreamTitle: "メインストリーム",
           mainStreamNote: "最新順で、方向、影響度、対象、ソースを先に表示します。",
@@ -1106,6 +1126,7 @@ async def home() -> str:
           heroSubtitle: "연준과 거시 지표, 중국과 트럼프, 미국 메가캡, 실적과 급등락, 젠슨 황, 일론 머스크, 전쟁·유가 재료를 우선 보여줍니다.",
           projectLink: "오픈소스 프로젝트",
           starLink: "GitHub 스타",
+          logoutLink: "로그아웃",
           languageLabel: "언어",
           snapshotLabel: "스냅샷",
           priorityLabel: "동향",
@@ -1119,6 +1140,7 @@ async def home() -> str:
           allCategories: "전체 카테고리",
           allRegions: "전체 지역",
           searchBtn: "검색",
+          searchLoading: "검색 중...",
           liveBtn: "실시간",
           mainStreamTitle: "메인 스트림",
           mainStreamNote: "최신순으로, 방향·영향도·대상·출처를 먼저 보여줍니다.",
@@ -1170,6 +1192,7 @@ async def home() -> str:
           heroSubtitle: "Pensado para lo que un trader minorista suele mirar primero: Fed y macro, Trump y China, megacaps de EE. UU., resultados y movimientos, Jensen Huang, Elon Musk, y catalizadores de guerra o petróleo.",
           projectLink: "Proyecto abierto",
           starLink: "Dar estrella en GitHub",
+          logoutLink: "Cerrar sesión",
           languageLabel: "Idioma",
           snapshotLabel: "Instantánea",
           priorityLabel: "Movimiento",
@@ -1183,6 +1206,7 @@ async def home() -> str:
           allCategories: "Todas las categorías",
           allRegions: "Todas las regiones",
           searchBtn: "Buscar",
+          searchLoading: "Buscando...",
           liveBtn: "En vivo",
           mainStreamTitle: "Flujo Principal",
           mainStreamNote: "Lo más reciente primero, con dirección, impacto, objetivos y contexto de fuente.",
@@ -1234,6 +1258,7 @@ async def home() -> str:
           heroSubtitle: "Conçu autour de ce qu’un trader particulier regarde d’abord : Fed et macro, Trump et Chine, mégacaps américaines, résultats et mouvements, Jensen Huang, Elon Musk, ainsi que guerre et pétrole.",
           projectLink: "Projet open source",
           starLink: "Mettre une étoile sur GitHub",
+          logoutLink: "Se déconnecter",
           languageLabel: "Langue",
           snapshotLabel: "Instantané",
           priorityLabel: "Mouvement",
@@ -1247,6 +1272,7 @@ async def home() -> str:
           allCategories: "Toutes les catégories",
           allRegions: "Toutes les régions",
           searchBtn: "Rechercher",
+          searchLoading: "Recherche...",
           liveBtn: "Live",
           mainStreamTitle: "Flux Principal",
           mainStreamNote: "Le plus récent d’abord, avec direction, impact, cibles et source.",
@@ -1335,6 +1361,7 @@ async def home() -> str:
         document.getElementById("heroSubtitle").textContent = t("heroSubtitle");
         document.getElementById("projectLink").textContent = t("projectLink");
         document.getElementById("starLink").textContent = t("starLink");
+        logoutLink.textContent = t("logoutLink");
         document.getElementById("languageLabel").textContent = t("languageLabel");
         document.getElementById("snapshotLabel").textContent = t("snapshotLabel");
         document.getElementById("priorityLabel").textContent = t("priorityLabel");
@@ -1358,7 +1385,7 @@ async def home() -> str:
         regionSelect.options[3].text = translateRegion("china");
         regionSelect.options[4].text = translateRegion("europe");
         regionSelect.options[5].text = translateRegion("middle-east");
-        document.getElementById("searchBtn").textContent = t("searchBtn");
+        searchBtn.textContent = t("searchBtn");
         liveBtn.textContent = t("liveBtn");
         document.getElementById("mainStreamTitle").textContent = t("mainStreamTitle");
         document.getElementById("mainStreamNote").textContent = t("mainStreamNote");
@@ -1565,25 +1592,20 @@ async def home() -> str:
         `;
       }
 
-      async function loadInitial() {
-        const response = await fetch(`/api/items?limit=${pageSize}&lang=${encodeURIComponent(currentLanguage)}`);
-        const data = await response.json();
-        streamEl.innerHTML = data.items.map(card).join("");
-        pageLabel.textContent = t("liveMode");
+      function renderNowMoving(nowMoving) {
+        priorityPanel.innerHTML = [
+          tapeSection(t("tapeMacro"), nowMoving?.macro_now || []),
+          tapeSection(t("tapeStock"), nowMoving?.stock_now || []),
+          tapeSection(t("tapeGeo"), nowMoving?.geopolitics_now || []),
+        ].join("");
+        priorityCount.textContent = String(
+          (nowMoving?.macro_now || []).length +
+          (nowMoving?.stock_now || []).length +
+          (nowMoving?.geopolitics_now || []).length
+        );
       }
 
-      async function loadDashboardSnapshot() {
-        const response = await fetch(`/api/dashboard?lang=${encodeURIComponent(currentLanguage)}`);
-        const data = await response.json();
-        if (liveMode) {
-          streamEl.innerHTML = data.stream.map(card).join("");
-        }
-        priorityPanel.innerHTML = [
-          tapeSection(t("tapeMacro"), data.now_moving?.macro_now || []),
-          tapeSection(t("tapeStock"), data.now_moving?.stock_now || []),
-          tapeSection(t("tapeGeo"), data.now_moving?.geopolitics_now || []),
-        ].join("");
-        eventsPanel.innerHTML = data.events.map(compactEvent).join("");
+      function renderRetailPanels(data) {
         sectionsPanel.innerHTML = [
           sectionBlock(t("section_market_drivers"), data.sections.market_drivers || []),
           sectionBlock(t("section_bonds_rates"), data.sections.bonds_rates || []),
@@ -1599,17 +1621,95 @@ async def home() -> str:
           sectionBlock(t("section_war_and_oil"), data.sections.war_and_oil || []),
         ].join("");
         moversPanel.innerHTML = (data.prepost_movers || []).map(compactMover).join("") || `<div class="compact-meta">${t("noMovers")}</div>`;
-        snapshotTime.textContent = formatTime(data.generated_at);
-        priorityCount.textContent = String(
-          (data.now_moving?.macro_now || []).length +
-          (data.now_moving?.stock_now || []).length +
-          (data.now_moving?.geopolitics_now || []).length
-        );
-        eventsCount.textContent = String(data.events.length);
-        syncNote.textContent = t("synced", {time: formatDateTime(data.generated_at)});
+      }
+
+      function renderEvents(data) {
+        eventsPanel.innerHTML = data.items.map(compactEvent).join("");
+        eventsCount.textContent = String(data.items.length);
+      }
+
+      function panelLoadingMarkup() {
+        return `<article class="compact-card"><div class="compact-meta">${t("searchLoading")}</div></article>`;
+      }
+
+      async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return await response.json();
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      async function loadInitial() {
+        const data = await fetchJsonWithTimeout(`/api/items?limit=${pageSize}&lang=${encodeURIComponent(currentLanguage)}`, 8000);
+        streamEl.innerHTML = data.items.map(card).join("");
+        pageLabel.textContent = t("liveMode");
+      }
+
+      async function loadDashboardPanels() {
+        const params = `lang=${encodeURIComponent(currentLanguage)}`;
+        const jobs = [
+          fetchJsonWithTimeout(`/api/now-moving?${params}`, 9000),
+          fetchJsonWithTimeout(`/api/retail-panels?${params}`, 12000),
+        ];
+        const shouldRefreshEvents = eventsRefreshCounter % 6 === 0;
+        if (shouldRefreshEvents) {
+          jobs.push(fetchJsonWithTimeout(`/api/events`, 12000));
+        }
+        const results = await Promise.allSettled(jobs);
+        const nowMoving = results[0].status === "fulfilled" ? results[0].value : null;
+        const retailPanels = results[1].status === "fulfilled" ? results[1].value : null;
+        const events = shouldRefreshEvents && results[2]?.status === "fulfilled" ? results[2].value : null;
+        if (nowMoving) {
+          renderNowMoving(nowMoving.now_moving || nowMoving);
+          snapshotTime.textContent = formatTime(nowMoving.generated_at);
+          syncNote.textContent = t("synced", {time: formatDateTime(nowMoving.generated_at)});
+        }
+        if (retailPanels) {
+          renderRetailPanels(retailPanels);
+        }
+        if (events) {
+          renderEvents(events);
+        }
+        eventsRefreshCounter += 1;
+        return {
+          generated_at: nowMoving?.generated_at || new Date().toISOString(),
+        };
+      }
+
+      async function loadDashboardSnapshot() {
+        await loadDashboardPanels();
+        if (liveMode) {
+          await loadInitial();
+        }
+      }
+
+      async function refreshLiveView() {
+        const [streamResult, panelsResult] = await Promise.allSettled([
+          loadInitial(),
+          loadDashboardPanels(),
+        ]);
+        if (streamResult.status !== "fulfilled") {
+          streamEl.innerHTML = `<article class="compact-card"><div class="compact-meta">${t("noMatching")}</div></article>`;
+        }
+        if (panelsResult.status !== "fulfilled") {
+          priorityPanel.innerHTML = panelLoadingMarkup();
+          eventsPanel.innerHTML = panelLoadingMarkup();
+          sectionsPanel.innerHTML = panelLoadingMarkup();
+          moversPanel.innerHTML = `<div class="compact-meta">${t("noMovers")}</div>`;
+        }
       }
 
       function scheduleDashboardRefresh(delay = 300) {
+        if (!liveMode) {
+          return;
+        }
         if (dashboardRefreshTimer) {
           clearTimeout(dashboardRefreshTimer);
         }
@@ -1626,7 +1726,23 @@ async def home() -> str:
         }
       }
 
+      function cancelSearchRequest() {
+        if (searchAbortController) {
+          searchAbortController.abort();
+          searchAbortController = null;
+        }
+      }
+
+      function setSearchUiState(isLoading) {
+        searchBtn.disabled = isLoading;
+        searchBtn.textContent = isLoading ? t("searchLoading") : t("searchBtn");
+      }
+
       async function fetchHistory(offset = 0) {
+        cancelSearchRequest();
+        const requestId = ++searchRequestId;
+        searchAbortController = new AbortController();
+        setSearchUiState(true);
         const params = new URLSearchParams();
         const q = queryInput.value.trim();
         const sourceCategory = categorySelect.value;
@@ -1642,26 +1758,52 @@ async def home() -> str:
         if (endAt) params.set("end_date", endAt);
         params.set("lang", currentLanguage);
         const endpoint = `/api/search?${params}`;
-        const response = await fetch(endpoint);
-        const data = await response.json();
-        streamEl.innerHTML = data.items.map(card).join("");
-        currentOffset = offset;
-        const pageNumber = Math.floor(currentOffset / pageSize) + 1;
-        pageLabel.textContent = t("historyPage", {page: pageNumber, count: data.count});
-        prevBtn.disabled = currentOffset === 0;
-        nextBtn.disabled = data.count < pageSize;
+        streamEl.innerHTML = `<article class="compact-card"><div class="compact-meta">${t("searchLoading")}</div></article>`;
+        try {
+          const response = await fetch(endpoint, { signal: searchAbortController.signal });
+          const data = await response.json();
+          if (requestId !== searchRequestId || liveMode) {
+            return;
+          }
+          streamEl.innerHTML = data.items.length
+            ? data.items.map(card).join("")
+            : `<article class="compact-card"><div class="compact-meta">${t("noMatching")}</div></article>`;
+          currentOffset = offset;
+          const pageNumber = Math.floor(currentOffset / pageSize) + 1;
+          pageLabel.textContent = t("historyPage", {page: pageNumber, count: data.count});
+          prevBtn.disabled = currentOffset === 0;
+          nextBtn.disabled = data.count < pageSize;
+          syncNote.textContent = t("historyPage", {page: pageNumber, count: data.count});
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            streamEl.innerHTML = `<article class="compact-card"><div class="compact-meta">${t("noMatching")}</div></article>`;
+          }
+        } finally {
+          if (requestId === searchRequestId) {
+            searchAbortController = null;
+            setSearchUiState(false);
+          }
+        }
       }
 
       async function runSearch(event) {
         event.preventDefault();
         liveMode = false;
         closeStream();
+        if (dashboardRefreshTimer) {
+          clearTimeout(dashboardRefreshTimer);
+          dashboardRefreshTimer = null;
+        }
         await fetchHistory(0);
       }
 
       function attachStream() {
-        source = new EventSource(`/stream?lang=${encodeURIComponent(currentLanguage)}`);
-        source.addEventListener("item", (event) => {
+        const nextSource = new EventSource(`/stream?lang=${encodeURIComponent(currentLanguage)}`);
+        source = nextSource;
+        nextSource.addEventListener("item", (event) => {
+          if (!liveMode || source !== nextSource) {
+            return;
+          }
           const item = JSON.parse(event.data);
           streamEl.insertAdjacentHTML("afterbegin", card(item));
           while (streamEl.children.length > 80) {
@@ -1672,6 +1814,8 @@ async def home() -> str:
       }
 
       function resetLiveMode() {
+        cancelSearchRequest();
+        setSearchUiState(false);
         closeStream();
         liveMode = true;
         currentOffset = 0;
@@ -1682,7 +1826,7 @@ async def home() -> str:
         toDate.value = "";
         prevBtn.disabled = true;
         nextBtn.disabled = true;
-        loadDashboardSnapshot().then(attachStream);
+        refreshLiveView().then(attachStream);
       }
 
       async function previousPage() {
@@ -1706,7 +1850,7 @@ async def home() -> str:
         applyTranslations();
         if (liveMode) {
           closeStream();
-          await loadDashboardSnapshot();
+          await refreshLiveView();
           attachStream();
         } else {
           await fetchHistory(currentOffset);
@@ -1716,8 +1860,33 @@ async def home() -> str:
       nextBtn.disabled = true;
       applyTranslations();
       updateLocalClock();
-      loadDashboardSnapshot().then(attachStream);
-      setInterval(loadDashboardSnapshot, 5000);
+      priorityPanel.innerHTML = panelLoadingMarkup();
+      eventsPanel.innerHTML = panelLoadingMarkup();
+      sectionsPanel.innerHTML = panelLoadingMarkup();
+      moversPanel.innerHTML = `<div class="compact-meta">${t("searchLoading")}</div>`;
+      priorityCount.textContent = "0";
+      eventsCount.textContent = "0";
+      refreshLiveView().then(attachStream);
+      setInterval(() => {
+        if (liveMode) {
+          loadDashboardPanels();
+        }
+      }, 5000);
+      window.addEventListener("focus", () => {
+        if (liveMode) {
+          refreshLiveView();
+        }
+      });
+      window.addEventListener("pageshow", () => {
+        if (liveMode) {
+          refreshLiveView();
+        }
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && liveMode) {
+          refreshLiveView();
+        }
+      });
       setInterval(updateLocalClock, 1000);
     </script>
   </body>
@@ -1766,13 +1935,32 @@ async def upcoming_events() -> dict[str, object]:
     return {"count": len(events), "items": events}
 
 
+@app.get("/api/now-moving")
+async def now_moving(lang: str = "en") -> dict[str, object]:
+    sections = service.now_moving_sections(limit_per_section=5, lang=lang)
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "now_moving": sections,
+    }
+
+
+@app.get("/api/retail-panels")
+async def retail_panels(lang: str = "en") -> dict[str, object]:
+    retail = await service.retail_snapshot(limit_per_section=7, lang=lang)
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "sections": retail["sections"],
+        "prepost_movers": retail["prepost_movers"],
+    }
+
+
 @app.get("/api/dashboard")
 async def dashboard(lang: str = "en") -> dict[str, object]:
     recent_items = [item.as_dict(lang) for item in service.localized_items(service.recent_items(limit=30), lang=lang)]
     priority_items = service.trader_focus_items(limit=8, lang=lang)
-    now_moving = service.now_moving_sections(limit_per_section=3, lang=lang)
+    now_moving = service.now_moving_sections(limit_per_section=5, lang=lang)
     events = [event.as_dict() for event in await service.upcoming_events()]
-    retail = await service.retail_snapshot(limit_per_section=5, lang=lang)
+    retail = await service.retail_snapshot(limit_per_section=7, lang=lang)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "stream": recent_items,
