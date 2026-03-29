@@ -42,6 +42,11 @@ class NewsStreamService:
         self._items = deque(reversed(db_items), maxlen=MAX_ITEMS)
         return db_items
 
+    def localized_items(self, items: list[StreamItem], lang: str = "en") -> list[StreamItem]:
+        if lang.startswith("zh"):
+            return self._store.ensure_chinese_for_items(items)
+        return items
+
     def history_items(
         self,
         limit: int = 50,
@@ -101,8 +106,8 @@ class NewsStreamService:
             "latest_item_title": latest_item.title if latest_item else None,
         }
 
-    def high_priority_items(self, limit: int = 25) -> list[dict[str, object]]:
-        items = self._deduped_recent_items(limit=200)
+    def high_priority_items(self, limit: int = 25, lang: str = "en") -> list[dict[str, object]]:
+        items = self.localized_items(self._deduped_recent_items(limit=200), lang=lang)
         ranked = [
             (priority_score(item), item)
             for item in items
@@ -115,13 +120,13 @@ class NewsStreamService:
             if self._is_duplicate_signature(item.published_at, item.title, seen_signatures):
                 continue
             seen_signatures.append((item.published_at, self._normalized_title(item.title), self._title_tokens(item.title)))
-            selected.append({**item.as_dict(), "priority_score": score})
+            selected.append({**item.as_dict(lang), "priority_score": score})
             if len(selected) >= limit:
                 break
         return selected
 
-    def trader_focus_items(self, limit: int = 8) -> list[dict[str, object]]:
-        items = self._deduped_recent_items(limit=250)
+    def trader_focus_items(self, limit: int = 8, lang: str = "en") -> list[dict[str, object]]:
+        items = self.localized_items(self._deduped_recent_items(limit=250), lang=lang)
         ranked: list[tuple[int, StreamItem]] = []
         for item in items:
             classification = item.classification
@@ -158,7 +163,7 @@ class NewsStreamService:
             seen_signatures.append((item.published_at, self._normalized_title(item.title), self._title_tokens(item.title)))
             selected.append(
                 {
-                    **item.as_dict(),
+                    **item.as_dict(lang),
                     "priority_score": score,
                 }
             )
@@ -166,8 +171,8 @@ class NewsStreamService:
                 break
         return selected
 
-    def now_moving_sections(self, limit_per_section: int = 3) -> dict[str, list[dict[str, object]]]:
-        items = self.trader_focus_items(limit=24)
+    def now_moving_sections(self, limit_per_section: int = 3, lang: str = "en") -> dict[str, list[dict[str, object]]]:
+        items = self.trader_focus_items(limit=24, lang=lang)
         sections: dict[str, list[dict[str, object]]] = {
             "macro_now": [],
             "stock_now": [],
@@ -206,12 +211,12 @@ class NewsStreamService:
 
         return sections
 
-    def retail_sections(self, limit_per_section: int = 6) -> dict[str, list[dict[str, object]]]:
-        items = self._deduped_recent_items(limit=250)
+    def retail_sections(self, limit_per_section: int = 6, lang: str = "en") -> dict[str, list[dict[str, object]]]:
+        items = self.localized_items(self._deduped_recent_items(limit=250), lang=lang)
         return build_retail_sections(items, limit_per_section=limit_per_section)
 
-    async def retail_snapshot(self, limit_per_section: int = 5) -> dict[str, object]:
-        items = self._deduped_recent_items(limit=300)
+    async def retail_snapshot(self, limit_per_section: int = 5, lang: str = "en") -> dict[str, object]:
+        items = self.localized_items(self._deduped_recent_items(limit=300), lang=lang)
         try:
             movers = await fetch_watchlist_movers()
         except Exception as exc:
@@ -266,22 +271,22 @@ class NewsStreamService:
                 self._errors.append(str(exc))
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
-    async def stream(self) -> AsyncIterator[str]:
+    async def stream(self, lang: str = "en") -> AsyncIterator[str]:
         sent_ids: set[str] = set()
-        backlog = self.recent_items(limit=30)
+        backlog = self.localized_items(self.recent_items(limit=30), lang=lang)
         for item in reversed(backlog):
             sent_ids.add(item.item_id)
-            yield self._format_sse("item", item.as_dict())
+            yield self._format_sse("item", item.as_dict(lang))
 
         while True:
             async with self._condition:
                 await self._condition.wait()
 
-            for item in reversed(self.recent_items(limit=30)):
+            for item in reversed(self.localized_items(self.recent_items(limit=30), lang=lang)):
                 if item.item_id in sent_ids:
                     continue
                 sent_ids.add(item.item_id)
-                yield self._format_sse("item", item.as_dict())
+                yield self._format_sse("item", item.as_dict(lang))
 
     @staticmethod
     def _format_sse(event: str, payload: dict[str, object]) -> str:

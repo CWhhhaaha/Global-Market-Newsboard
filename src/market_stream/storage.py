@@ -10,6 +10,7 @@ from .classification_service import ClassificationService
 from .config import MAX_STORED_ITEMS, SEC_ALWAYS_KEEP_FORMS, SEC_EVENT_KEYWORDS
 from .filing_filter import is_top_100_market_cap_filing
 from .models import StreamItem
+from .translation import contains_cjk, needs_chinese_translation, translate_text_to_chinese
 
 
 class SQLiteStore:
@@ -35,6 +36,8 @@ class SQLiteStore:
                     source_region TEXT NOT NULL,
                     title TEXT NOT NULL,
                     summary TEXT NOT NULL,
+                    title_zh TEXT NOT NULL DEFAULT '',
+                    summary_zh TEXT NOT NULL DEFAULT '',
                     url TEXT NOT NULL,
                     source_homepage TEXT NOT NULL,
                     published_at TEXT NOT NULL,
@@ -64,6 +67,14 @@ class SQLiteStore:
                 connection.execute(
                     "ALTER TABLE alerts ADD COLUMN classification_json TEXT NOT NULL DEFAULT '{}'"
                 )
+            if "title_zh" not in columns:
+                connection.execute(
+                    "ALTER TABLE alerts ADD COLUMN title_zh TEXT NOT NULL DEFAULT ''"
+                )
+            if "summary_zh" not in columns:
+                connection.execute(
+                    "ALTER TABLE alerts ADD COLUMN summary_zh TEXT NOT NULL DEFAULT ''"
+                )
             self._prune_noisy_filings(connection)
             self._refresh_classification(connection)
 
@@ -78,6 +89,8 @@ class SQLiteStore:
                 item.source_region,
                 item.title,
                 item.summary,
+                item.title_zh or self._translate_if_needed(item.title),
+                item.summary_zh,
                 item.url,
                 item.source_homepage,
                 item.published_at.isoformat(),
@@ -92,9 +105,9 @@ class SQLiteStore:
                 """
                 INSERT OR IGNORE INTO alerts (
                     id, source_name, source_category, source_region,
-                    title, summary, url, source_homepage,
+                    title, summary, title_zh, summary_zh, url, source_homepage,
                     published_at, fetched_at, matched_terms, classification_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -151,35 +164,63 @@ class SQLiteStore:
         end_at: datetime | None = None,
     ) -> list[StreamItem]:
         pattern = f"%{query.strip()}%"
-        sql = """
-            SELECT *
-            FROM alerts
-            WHERE (
-                title LIKE ?
-                OR summary LIKE ?
-                OR matched_terms LIKE ?
-                OR source_name LIKE ?
-            )
-        """
-        params: list[object] = [pattern, pattern, pattern, pattern]
-        if source_category:
-            sql += " AND source_category = ?"
-            params.append(source_category)
-        if source_region:
-            sql += " AND source_region = ?"
-            params.append(source_region)
-        if start_at:
-            sql += " AND published_at >= ?"
-            params.append(start_at.astimezone(timezone.utc).isoformat())
-        if end_at:
-            sql += " AND published_at <= ?"
-            params.append(end_at.astimezone(timezone.utc).isoformat())
-        sql += " ORDER BY published_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-
         with self._connect() as connection:
+            if contains_cjk(query):
+                self._backfill_chinese_fields(connection, limit=8)
+            sql = """
+                SELECT *
+                FROM alerts
+                WHERE (
+                    title LIKE ?
+                    OR summary LIKE ?
+                    OR title_zh LIKE ?
+                    OR summary_zh LIKE ?
+                    OR matched_terms LIKE ?
+                    OR source_name LIKE ?
+                )
+            """
+            params: list[object] = [pattern, pattern, pattern, pattern, pattern, pattern]
+            if source_category:
+                sql += " AND source_category = ?"
+                params.append(source_category)
+            if source_region:
+                sql += " AND source_region = ?"
+                params.append(source_region)
+            if start_at:
+                sql += " AND published_at >= ?"
+                params.append(start_at.astimezone(timezone.utc).isoformat())
+            if end_at:
+                sql += " AND published_at <= ?"
+                params.append(end_at.astimezone(timezone.utc).isoformat())
+            sql += " ORDER BY published_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
             rows = connection.execute(sql, params).fetchall()
         return [self._row_to_item(row) for row in rows]
+
+    def ensure_chinese_for_items(self, items: list[StreamItem], limit: int = 12) -> list[StreamItem]:
+        remaining = limit
+        updates: list[tuple[str, str, str]] = []
+        for item in items:
+            if remaining <= 0:
+                break
+            changed = False
+            if not item.title_zh:
+                item.title_zh = self._translate_if_needed(item.title)
+                changed = True
+            if changed:
+                remaining -= 1
+                updates.append((item.title_zh, item.summary_zh, item.item_id))
+        if updates:
+            with self._connect() as connection:
+                connection.executemany(
+                    """
+                    UPDATE alerts
+                    SET title_zh = ?, summary_zh = ?
+                    WHERE id = ?
+                    """,
+                    updates,
+                )
+        return items
 
     def all_ids(self) -> set[str]:
         with self._connect() as connection:
@@ -194,6 +235,8 @@ class SQLiteStore:
             source_region=row["source_region"],
             title=row["title"],
             summary=row["summary"],
+            title_zh=row["title_zh"],
+            summary_zh=row["summary_zh"],
             url=row["url"],
             source_homepage=row["source_homepage"],
             published_at=datetime.fromisoformat(row["published_at"]),
@@ -289,6 +332,41 @@ class SQLiteStore:
                 for item in items
             ],
         )
+
+    def _backfill_chinese_fields(self, connection: sqlite3.Connection, limit: int = 120) -> None:
+        rows = connection.execute(
+            """
+            SELECT id, title, summary, title_zh, summary_zh
+            FROM alerts
+            WHERE title_zh = '' OR summary_zh = ''
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        if not rows:
+            return
+
+        updates: list[tuple[str, str, str]] = []
+        for row in rows:
+            title_zh = row["title_zh"] or self._translate_if_needed(row["title"])
+            summary_zh = row["summary_zh"] or self._translate_if_needed(row["summary"])
+            updates.append((title_zh, summary_zh, row["id"]))
+
+        connection.executemany(
+            """
+            UPDATE alerts
+            SET title_zh = ?, summary_zh = ?
+            WHERE id = ?
+            """,
+            updates,
+        )
+
+    @staticmethod
+    def _translate_if_needed(text: str) -> str:
+        if not needs_chinese_translation(text):
+            return text
+        return translate_text_to_chinese(text)
 
     @staticmethod
     def _classification_from_json(raw: str) -> ClassificationResult | None:

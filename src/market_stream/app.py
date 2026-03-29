@@ -885,6 +885,9 @@ async def home() -> str:
           targets: "影响对象",
           region: "地区",
           prepostBadge: "盘前/盘后",
+          lagLabel: "延迟",
+          lastLabel: "最新",
+          changeLabel: "变动",
           tapeMacro: "宏观驱动",
           tapeStock: "个股异动",
           tapeGeo: "地缘与政策",
@@ -946,6 +949,9 @@ async def home() -> str:
           targets: "影響標的",
           region: "地區",
           prepostBadge: "盤前/盤後",
+          lagLabel: "延遲",
+          lastLabel: "最新",
+          changeLabel: "變動",
           tapeMacro: "宏觀驅動",
           tapeStock: "個股異動",
           tapeGeo: "地緣與政策",
@@ -1007,6 +1013,9 @@ async def home() -> str:
           targets: "Targets",
           region: "Region",
           prepostBadge: "Pre/Post",
+          lagLabel: "lag",
+          lastLabel: "Last",
+          changeLabel: "Change",
           tapeMacro: "Macro Now",
           tapeStock: "Stock Now",
           tapeGeo: "Geopolitics Now",
@@ -1068,6 +1077,9 @@ async def home() -> str:
           targets: "対象",
           region: "地域",
           prepostBadge: "プレ/アフター",
+          lagLabel: "遅延",
+          lastLabel: "直近値",
+          changeLabel: "変化",
           tapeMacro: "マクロ",
           tapeStock: "個別株",
           tapeGeo: "地政学",
@@ -1129,6 +1141,9 @@ async def home() -> str:
           targets: "대상",
           region: "지역",
           prepostBadge: "프리/애프터",
+          lagLabel: "지연",
+          lastLabel: "현재가",
+          changeLabel: "변동",
           tapeMacro: "거시",
           tapeStock: "종목",
           tapeGeo: "지정학",
@@ -1190,6 +1205,9 @@ async def home() -> str:
           targets: "Objetivos",
           region: "Región",
           prepostBadge: "Pre/Post",
+          lagLabel: "retraso",
+          lastLabel: "Último",
+          changeLabel: "Cambio",
           tapeMacro: "Macro",
           tapeStock: "Acciones",
           tapeGeo: "Geopolítica",
@@ -1251,6 +1269,9 @@ async def home() -> str:
           targets: "Cibles",
           region: "Région",
           prepostBadge: "Pré/Post",
+          lagLabel: "décalage",
+          lastLabel: "Dernier",
+          changeLabel: "Variation",
           tapeMacro: "Macro",
           tapeStock: "Actions",
           tapeGeo: "Géopolitique",
@@ -1383,9 +1404,23 @@ async def home() -> str:
       }
 
       function localizedAlertText(item) {
+        if (item.alert_text && currentLanguage.startsWith("zh")) {
+          return item.alert_text
+            .replace(/\\b时间: .*$/m, `时间: ${formatDateTime(item.published_at)}`)
+            .replace(/\\bTime: .*$/m, `时间: ${formatDateTime(item.published_at)}`);
+        }
         const classification = item.classification || {};
-        const terms = (item.matched_terms || []).slice(0, 5).join(", ") || "general market signal";
+        const terms = (item.matched_terms || []).slice(0, 5).join(", ") || (currentLanguage.startsWith("zh") ? "一般市场信号" : "general market signal");
         const summary = item.summary || "";
+        if (currentLanguage.startsWith("zh")) {
+          return [
+            `时间: ${formatDateTime(item.published_at)}`,
+            `来源: ${item.source_name}`,
+            `信号: ${terms}`,
+            `分类: ${labelText(classification.primary_label || "unclassified")} | ${labelText(classification.impact_direction || "watch")} | ${labelText(classification.impact_level || "low")}`,
+            summary ? `摘要: ${summary}` : "",
+          ].filter(Boolean).join("\\n");
+        }
         return [
           `Time: ${formatDateTime(item.published_at)}`,
           `Source: ${item.source_name}`,
@@ -1408,7 +1443,7 @@ async def home() -> str:
                 <span class="badge badge-neutral">${item.source_name}</span>
                 <span class="badge badge-neutral">${translateCategory(item.source_category)}</span>
                 <span class="${badgeClass(classification.impact_direction)}">${labelText(classification.impact_direction)}</span>
-                <span class="badge badge-neutral">lag ${lagText}</span>
+                <span class="badge badge-neutral">${t("lagLabel")} ${lagText}</span>
               </div>
               <div class="meta-right">
                 <div class="meta">${formatDateTime(item.published_at)}</div>
@@ -1445,7 +1480,7 @@ async def home() -> str:
               <div class="meta-left">
                 <span class="badge badge-neutral">${labelText(item.classification?.primary_label || item.source_category)}</span>
                 <span class="${badgeClass(item.classification?.impact_direction)}">${labelText(item.classification?.impact_direction || "watch")}</span>
-                <span class="badge badge-neutral">lag ${lagText}</span>
+                <span class="badge badge-neutral">${t("lagLabel")} ${lagText}</span>
               </div>
               <div class="meta">${formatTime(item.published_at)}</div>
             </div>
@@ -1501,7 +1536,7 @@ async def home() -> str:
             </div>
             <div class="compact-title"><a href="${item.source_url}" target="_blank" rel="noreferrer">${item.symbol}</a></div>
             <div class="compact-meta">${item.source_name}</div>
-            <div class="line">Last: ${item.last || "--"}\nChange: ${item.change || "--"} (${item.change_pct || "--"})</div>
+            <div class="line">${t("lastLabel")}: ${item.last || "--"}\n${t("changeLabel")}: ${item.change || "--"} (${item.change_pct || "--"})</div>
           </article>
         `;
       }
@@ -1521,7 +1556,7 @@ async def home() -> str:
                       <span class="badge badge-neutral">${labelText(classification.impact_level || "low")}</span>
                     </div>
                     <div class="compact-title"><a href="${articleUrl}" target="_blank" rel="noreferrer">${item.title}</a></div>
-                    <div class="compact-meta">${classification.primary_label || "unclassified"} | ${(classification.affected_targets || []).join(", ") || "SPY"}</div>
+            <div class="compact-meta">${labelText(classification.primary_label || "unclassified")} | ${(classification.affected_targets || []).join(", ") || "SPY"}</div>
                   </article>
                 `;
               }).join("") : `<article class="compact-card"><div class="compact-meta">${t("noMatching")}</div></article>`}
@@ -1531,14 +1566,14 @@ async def home() -> str:
       }
 
       async function loadInitial() {
-        const response = await fetch(`/api/items?limit=${pageSize}`);
+        const response = await fetch(`/api/items?limit=${pageSize}&lang=${encodeURIComponent(currentLanguage)}`);
         const data = await response.json();
         streamEl.innerHTML = data.items.map(card).join("");
         pageLabel.textContent = t("liveMode");
       }
 
       async function loadDashboardSnapshot() {
-        const response = await fetch("/api/dashboard");
+        const response = await fetch(`/api/dashboard?lang=${encodeURIComponent(currentLanguage)}`);
         const data = await response.json();
         if (liveMode) {
           streamEl.innerHTML = data.stream.map(card).join("");
@@ -1605,6 +1640,7 @@ async def home() -> str:
         if (sourceRegion) params.set("source_region", sourceRegion);
         if (startAt) params.set("start_date", startAt);
         if (endAt) params.set("end_date", endAt);
+        params.set("lang", currentLanguage);
         const endpoint = `/api/search?${params}`;
         const response = await fetch(endpoint);
         const data = await response.json();
@@ -1624,7 +1660,7 @@ async def home() -> str:
       }
 
       function attachStream() {
-        source = new EventSource("/stream");
+        source = new EventSource(`/stream?lang=${encodeURIComponent(currentLanguage)}`);
         source.addEventListener("item", (event) => {
           const item = JSON.parse(event.data);
           streamEl.insertAdjacentHTML("afterbegin", card(item));
@@ -1669,7 +1705,9 @@ async def home() -> str:
         localStorage.setItem("market_stream_language", currentLanguage);
         applyTranslations();
         if (liveMode) {
+          closeStream();
           await loadDashboardSnapshot();
+          attachStream();
         } else {
           await fetchHistory(currentOffset);
         }
@@ -1691,21 +1729,22 @@ async def home() -> str:
 async def get_items(
     limit: int = 50,
     offset: int = 0,
+    lang: str = "en",
     source_category: str | None = None,
     source_region: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict[str, object]:
     items = [
-        item.as_dict()
-        for item in service.history_items(
+        item.as_dict(lang)
+        for item in service.localized_items(service.history_items(
             limit=limit,
             offset=offset,
             source_category=source_category,
             source_region=source_region,
             start_at=parse_day_start(start_date),
             end_at=parse_day_end(end_date),
-        )
+        ), lang=lang)
     ]
     return {"count": len(items), "items": items, "errors": service.recent_errors()}
 
@@ -1716,8 +1755,8 @@ async def health() -> dict[str, object]:
 
 
 @app.get("/api/priority")
-async def priority_items(limit: int = 25) -> dict[str, object]:
-    items = service.high_priority_items(limit=limit)
+async def priority_items(limit: int = 25, lang: str = "en") -> dict[str, object]:
+    items = service.high_priority_items(limit=limit, lang=lang)
     return {"count": len(items), "items": items}
 
 
@@ -1728,12 +1767,12 @@ async def upcoming_events() -> dict[str, object]:
 
 
 @app.get("/api/dashboard")
-async def dashboard() -> dict[str, object]:
-    recent_items = [item.as_dict() for item in service.recent_items(limit=30)]
-    priority_items = service.trader_focus_items(limit=8)
-    now_moving = service.now_moving_sections(limit_per_section=3)
+async def dashboard(lang: str = "en") -> dict[str, object]:
+    recent_items = [item.as_dict(lang) for item in service.localized_items(service.recent_items(limit=30), lang=lang)]
+    priority_items = service.trader_focus_items(limit=8, lang=lang)
+    now_moving = service.now_moving_sections(limit_per_section=3, lang=lang)
     events = [event.as_dict() for event in await service.upcoming_events()]
-    retail = await service.retail_snapshot(limit_per_section=5)
+    retail = await service.retail_snapshot(limit_per_section=5, lang=lang)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "stream": recent_items,
@@ -1750,6 +1789,7 @@ async def search_items(
     q: str = "",
     limit: int = 50,
     offset: int = 0,
+    lang: str = "en",
     source_category: str | None = None,
     source_region: str | None = None,
     start_date: str | None = None,
@@ -1759,20 +1799,20 @@ async def search_items(
     end_at = parse_day_end(end_date)
     if not q.strip():
         items = [
-            item.as_dict()
-            for item in service.history_items(
+            item.as_dict(lang)
+            for item in service.localized_items(service.history_items(
                 limit=limit,
                 offset=offset,
                 source_category=source_category,
                 source_region=source_region,
                 start_at=start_at,
                 end_at=end_at,
-            )
+            ), lang=lang)
         ]
     else:
         items = [
-            item.as_dict()
-            for item in service.search_items(
+            item.as_dict(lang)
+            for item in service.localized_items(service.search_items(
                 query=q,
                 limit=limit,
                 offset=offset,
@@ -1780,7 +1820,7 @@ async def search_items(
                 source_region=source_region,
                 start_at=start_at,
                 end_at=end_at,
-            )
+            ), lang=lang)
         ]
     return {
         "count": len(items),
@@ -1799,6 +1839,7 @@ async def get_text(
     limit: int = 50,
     offset: int = 0,
     q: str = "",
+    lang: str = "en",
     source_category: str | None = None,
     source_region: str | None = None,
     start_date: str | None = None,
@@ -1807,16 +1848,16 @@ async def get_text(
     start_at = parse_day_start(start_date)
     end_at = parse_day_end(end_date)
     if not q.strip():
-        items = service.history_items(
+        items = service.localized_items(service.history_items(
             limit=limit,
             offset=offset,
             source_category=source_category,
             source_region=source_region,
             start_at=start_at,
             end_at=end_at,
-        )
+        ), lang=lang)
     else:
-        items = service.search_items(
+        items = service.localized_items(service.search_items(
             query=q,
             limit=limit,
             offset=offset,
@@ -1824,11 +1865,11 @@ async def get_text(
             source_region=source_region,
             start_at=start_at,
             end_at=end_at,
-        )
-    blocks = [item.as_alert_text() for item in items]
+        ), lang=lang)
+    blocks = [item.as_alert_text(lang) for item in items]
     return "\n\n".join(blocks)
 
 
 @app.get("/stream")
-async def stream() -> StreamingResponse:
-    return StreamingResponse(service.stream(), media_type="text/event-stream")
+async def stream(lang: str = "en") -> StreamingResponse:
+    return StreamingResponse(service.stream(lang=lang), media_type="text/event-stream")
